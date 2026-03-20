@@ -170,7 +170,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, index }) => {
   });
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
       <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex flex-wrap gap-4 justify-between items-center">
         <div>
             <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -237,7 +237,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ result, index }) => {
           <h4 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">DNA Alignment (Partial)</h4>
           <div className="bg-slate-900 rounded-lg p-4 overflow-x-auto">
             <pre className="text-xs font-mono leading-relaxed">
-              <div className="text-slate-400 mb-1">Original (Top) vs. Template (Bottom)</div>
+              <div className="text-slate-400 mb-1">Genomic DNA (Top) vs. Repair Template (Bottom)</div>
               <div className="text-sky-300 whitespace-pre">{renderedOrig}</div>
               <div className="text-slate-600 whitespace-pre">{spacedMatch}</div>
               <div className="text-emerald-400 whitespace-pre">

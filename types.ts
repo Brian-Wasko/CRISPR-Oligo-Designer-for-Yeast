@@ -48,33 +48,10 @@ export interface Ortholog {
   ensemblId?: string; // Specific field for ENSG ID to help merging
   score: number; // DIOPT Score
   bestScore: boolean;
-  percentIdentity: number;
-  percentSimilarity: number;
   source: 'DIOPT' | 'Ensembl' | 'Merged';
   // Alignment data for mapping residues
   alignment?: {
       sourceSeq: string; // Yeast Aligned Seq (with gaps)
       targetSeq: string; // Human Aligned Seq (with gaps)
   };
-}
-
-export interface HumanAnalysisResult {
-    orthologSymbol: string;
-    humanResidue: number;
-    humanRefAA: string;
-    isConserved: boolean;
-    amClass?: string;
-    amPathogenicity?: number;
-    siftScore?: number;
-    siftPrediction?: string;
-    polyphenScore?: number;
-    polyphenPrediction?: string;
-}
-
-export interface VariantEffectResult {
-    score?: number; // Yeast SIFT Score
-    prediction: string; // 'tolerated' | 'deleterious'
-    source: string;
-    // Proxied Human Data
-    humanAnalysis?: HumanAnalysisResult;
 }

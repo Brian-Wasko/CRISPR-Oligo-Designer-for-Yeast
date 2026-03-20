@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { InputForm } from './components/InputForm';
 import { ResultCard } from './components/ResultCard';
-import { resolveGene, fetchVepScore, fetchOrthologs, mapResidueToOrtholog, fetchHumanVariantEffect, isResidueSimilar } from './services/api';
+import { resolveGene, fetchOrthologs } from './services/api';
 import { findCas9Sites, generateRepairTemplates } from './services/crispr';
-import { RepairResult, Ortholog, VariantEffectResult } from './types';
+import { RepairResult, Ortholog } from './types';
 
 export default function App() {
   const [loading, setLoading] = useState(false);
@@ -13,9 +13,6 @@ export default function App() {
   const [currentGene, setCurrentGene] = useState<string>("");
   const [currentEntrezId, setCurrentEntrezId] = useState<string | null>(null);
   const [geneDescription, setGeneDescription] = useState<string | null>(null);
-  
-  const [variantEffect, setVariantEffect] = useState<VariantEffectResult | null>(null);
-  const [isFetchingEffect, setIsFetchingEffect] = useState(false);
   
   const [orthologs, setOrthologs] = useState<Ortholog[]>([]);
   const [isFetchingOrthologs, setIsFetchingOrthologs] = useState(false);
@@ -28,7 +25,6 @@ export default function App() {
     setError(null);
     setResults(null);
     setGeneDescription(null);
-    setVariantEffect(null);
     setOrthologs([]);
     setCurrentEntrezId(null);
     
@@ -44,58 +40,12 @@ export default function App() {
       setCurrentEntrezId(geneInfo.entrezId || null);
       setGeneDescription(geneInfo.description || null);
       
-      // 2. Fetch Orthologs (Human) & Variant Effects in Parallel
+      // 2. Fetch Orthologs (Human)
       setIsFetchingOrthologs(true);
-      setIsFetchingEffect(true);
 
-      // We fetch orthologs completely first to ensure we have data for the Human AM check
       const orthologsData = await fetchOrthologs(geneInfo.symbol, geneInfo.id, geneInfo.entrezId);
       setOrthologs(orthologsData);
       setIsFetchingOrthologs(false);
-
-      const yeastVepPromise = geneInfo.transcriptId 
-          ? fetchVepScore(geneInfo.transcriptId, residue, mutation, geneInfo.sequence)
-          : Promise.resolve(null);
-
-      let combinedEffect = await yeastVepPromise;
-
-      // 3. Try to fetch Human AlphaMissense if we have a good ortholog with alignment
-      // Prioritize High Identity Matches
-      if (orthologsData.length > 0) {
-          const bestOrtholog = orthologsData.find(o => o.alignment && o.ensemblId && o.percentIdentity > 20);
-          
-          if (bestOrtholog && bestOrtholog.alignment && bestOrtholog.ensemblId) {
-             const mapping = mapResidueToOrtholog(residue, bestOrtholog.alignment);
-             
-             if (mapping) {
-                 const yeastAA = geneInfo.sequence[residue - 1]; // 0-based
-                 const yeastAAChar = yeastAA ? yeastAA.toUpperCase() : '';
-                 const humanAAChar = mapping.humanAA.toUpperCase();
-
-                 // Check Conservation OR Similarity
-                 const similar = isResidueSimilar(yeastAAChar, humanAAChar);
-                 
-                 if (similar) {
-                     const humanAnalysis = await fetchHumanVariantEffect(
-                         bestOrtholog.ensemblId,
-                         mapping.humanResidueIndex,
-                         humanAAChar,
-                         mutation
-                     );
-
-                     if (humanAnalysis) {
-                         combinedEffect = {
-                             ...(combinedEffect || { prediction: 'unknown', source: 'Merged' }),
-                             humanAnalysis: humanAnalysis
-                         };
-                     }
-                 }
-             }
-          }
-      }
-
-      setVariantEffect(combinedEffect);
-      setIsFetchingEffect(false);
 
       // 4. Find Sites & Generate Templates
       const sites = findCas9Sites(geneInfo.sequence, residue);
@@ -126,7 +76,6 @@ export default function App() {
 
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");
-      setIsFetchingEffect(false);
       setIsFetchingOrthologs(false);
     } finally {
       setLoading(false);
@@ -176,8 +125,6 @@ export default function App() {
                       <thead className="text-xs text-sky-800 uppercase bg-sky-50 sticky top-0 shadow-sm z-10">
                           <tr>
                               <th className="px-3 py-2">Symbol</th>
-                              <th className="px-3 py-2">% Identity</th>
-                              <th className="px-3 py-2">% Similarity</th>
                               <th className="px-3 py-2">DIOPT Score</th>
                           </tr>
                       </thead>
@@ -187,12 +134,6 @@ export default function App() {
                                   <td className="px-3 py-2 font-bold text-slate-700">
                                       {orth.symbol}
                                       {orth.bestScore && <span className="ml-2 text-[10px] bg-sky-200 text-sky-800 px-1.5 py-0.5 rounded-full" title="Best Score">Best</span>}
-                                  </td>
-                                  <td className="px-3 py-2 text-slate-600 font-mono">
-                                      {orth.percentIdentity ? `${orth.percentIdentity.toFixed(0)}%` : '-'}
-                                  </td>
-                                  <td className="px-3 py-2 text-slate-600 font-mono">
-                                      {orth.percentSimilarity ? `${orth.percentSimilarity.toFixed(0)}%` : '-'}
                                   </td>
                                   <td className="px-3 py-2">
                                       <div className="flex items-center gap-2">
@@ -212,117 +153,6 @@ export default function App() {
                       </div>
                   )}
               </div>
-          </div>
-      );
-  };
-
-  const renderVariantEffectInfo = () => {
-      if (isFetchingEffect) {
-          return (
-             <div className="bg-white border border-slate-200 rounded-xl p-4 mb-8 flex items-center gap-3 animate-pulse">
-                <div className="h-10 w-10 bg-indigo-100 rounded-full"></div>
-                <div><div className="h-4 w-32 bg-slate-200 rounded mb-2"></div><div className="h-3 w-48 bg-slate-100 rounded"></div></div>
-             </div>
-          );
-      }
-      
-      if (!variantEffect) {
-          return (
-             <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 mb-8 flex items-center gap-4 opacity-75">
-                 <div className="p-3 bg-slate-200 rounded-full text-slate-400">
-                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                 </div>
-                 <div>
-                     <h4 className="font-bold text-slate-700 text-sm uppercase tracking-wider mb-1">Effect Prediction</h4>
-                     <p className="text-sm text-slate-500">
-                        No effect scores found for <strong>{currentGene}</strong> p.{residueForDisplay}{mutationForDisplay}.
-                     </p>
-                 </div>
-            </div>
-          );
-      }
-
-      const { score, prediction, humanAnalysis } = variantEffect;
-      
-      // Determine overall status based on Yeast SIFT OR Human AM
-      const isYeastDeleterious = (score !== undefined && score <= 0.05) || (prediction && prediction.includes('deleterious'));
-      
-      const humanAMScore = humanAnalysis?.amPathogenicity;
-      const humanAMClass = humanAnalysis?.amClass;
-      const isHumanDeleterious = (humanAMScore !== undefined && humanAMScore >= 0.56) || (humanAMClass && humanAMClass.includes('pathogenic'));
-
-      const isBad = isYeastDeleterious || isHumanDeleterious;
-
-      let colorClass = isBad 
-        ? "bg-red-50 border-red-200 text-red-800"
-        : "bg-green-50 border-green-200 text-green-800";
-
-      let icon = isBad ? (
-         <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-      ) : (
-         <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-      );
-
-      return (
-          <div className={`rounded-xl p-5 mb-8 border flex flex-col gap-4 shadow-sm ${colorClass}`}>
-             <div className="flex items-center gap-4">
-                 <div className="p-3 bg-white bg-opacity-60 rounded-full shadow-sm shrink-0">
-                     {icon}
-                 </div>
-                 <div>
-                     <h4 className="font-bold text-xs uppercase tracking-wider opacity-70 mb-1">Yeast SIFT Score</h4>
-                     <div className="flex items-baseline gap-3">
-                        {score !== undefined ? (
-                            <span className="text-2xl font-bold tracking-tight">{score.toFixed(2)}</span>
-                        ) : (
-                            <span className="text-lg italic opacity-50">Not available</span>
-                        )}
-                        <span className="font-semibold text-sm border-l border-current pl-3 opacity-90 capitalize">{prediction.replace(/_/g, ' ')}</span>
-                     </div>
-                 </div>
-             </div>
-
-             {/* Human Inferred Data */}
-             {humanAnalysis && (
-                 <div className="bg-white bg-opacity-50 rounded-lg p-3 border border-current border-opacity-10 mt-2">
-                     <div className="flex items-center justify-between mb-2">
-                         <h5 className="font-bold text-xs uppercase tracking-wider opacity-80">
-                             Inferred from Human ({humanAnalysis.orthologSymbol})
-                         </h5>
-                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-white bg-opacity-80 font-mono border border-current border-opacity-20">
-                             Conserved Residue: {humanAnalysis.humanRefAA}{humanAnalysis.humanResidue}
-                         </span>
-                     </div>
-                     
-                     <div className="grid grid-cols-2 gap-4">
-                         <div>
-                             <span className="text-xs opacity-60 block mb-0.5">AlphaMissense</span>
-                             <div className="flex items-baseline gap-2">
-                                {humanAnalysis.amPathogenicity !== undefined ? (
-                                    <span className="text-xl font-bold">{humanAnalysis.amPathogenicity.toFixed(2)}</span>
-                                ) : <span className="text-sm opacity-50">--</span>}
-                                {humanAnalysis.amClass && (
-                                    <span className="text-xs font-semibold capitalize">{humanAnalysis.amClass.replace(/_/g, ' ')}</span>
-                                )}
-                             </div>
-                         </div>
-                         <div>
-                             <span className="text-xs opacity-60 block mb-0.5">Human SIFT</span>
-                             <div className="flex items-baseline gap-2">
-                                {humanAnalysis.siftScore !== undefined ? (
-                                    <span className="text-xl font-bold">{humanAnalysis.siftScore.toFixed(2)}</span>
-                                ) : <span className="text-sm opacity-50">--</span>}
-                                {humanAnalysis.siftPrediction && (
-                                    <span className="text-xs font-semibold capitalize">{humanAnalysis.siftPrediction.replace(/_/g, ' ')}</span>
-                                )}
-                             </div>
-                         </div>
-                     </div>
-                     <p className="text-[10px] opacity-60 mt-2 italic">
-                         *Score derived from mapping Yeast residue {residueForDisplay} to Human {humanAnalysis.humanRefAA}{humanAnalysis.humanResidue} due to high similarity/conservation.
-                     </p>
-                 </div>
-             )}
           </div>
       );
   };
@@ -400,7 +230,6 @@ export default function App() {
                  </div>
 
                  {renderOrthologs()}
-                 {renderVariantEffectInfo()}
 
                 <div className="flex items-center justify-between mb-6">
                    <h2 className="text-2xl font-bold text-slate-800">Design Results</h2>
@@ -409,9 +238,16 @@ export default function App() {
                    </span>
                 </div>
 
-                {results.map((result, idx) => (
-                  <ResultCard key={idx} result={result} index={idx} />
-                ))}
+                <div className="flex flex-col gap-10">
+                  {results.map((result, idx) => (
+                    <React.Fragment key={idx}>
+                      <ResultCard result={result} index={idx} />
+                      {idx < results.length - 1 && (
+                        <hr className="border-t-4 border-slate-800 rounded-full" />
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
               </div>
             )}
           </div>

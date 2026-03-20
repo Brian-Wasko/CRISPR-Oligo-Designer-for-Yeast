@@ -1,5 +1,5 @@
-import { GeneInfo, Ortholog, VariantEffectResult, HumanAnalysisResult } from '../types';
-import { toThreeLetterAA, codonToAA } from './utils';
+import { GeneInfo, Ortholog } from '../types';
+import { dioptData } from '../DIOPT2026';
 
 const ENSEMBL_BASE = "https://rest.ensembl.org";
 
@@ -50,126 +50,6 @@ export async function resolveGene(geneSymbol: string): Promise<GeneInfo> {
   }
 
   return { id, transcriptId, entrezId, symbol: canonicalSymbol, sequence: sequence.trim(), description };
-}
-
-export async function fetchVepScore(
-    transcriptId: string, 
-    residue: number, 
-    mutation: string, 
-    originalSequence: string
-): Promise<VariantEffectResult | null> {
-    try {
-        const codonIndex = (residue - 1) * 3;
-        if (codonIndex >= originalSequence.length) return null;
-        
-        const originalCodon = originalSequence.substring(codonIndex, codonIndex + 3);
-        const originalAA = codonToAA(originalCodon);
-        
-        if (!originalAA) return null;
-
-        if (originalAA === mutation) {
-            return { prediction: "synonymous_variant", source: "Calculated (Identity)" };
-        }
-        
-        const threeLetterRef = toThreeLetterAA(originalAA);
-        const threeLetterAlt = toThreeLetterAA(mutation);
-        const hgvs = `${transcriptId}:p.${threeLetterRef}${residue}${threeLetterAlt}`;
-        
-        // Yeast SIFT call
-        const response = await fetch(
-            `${ENSEMBL_BASE}/vep/saccharomyces_cerevisiae/hgvs/${hgvs}?content-type=application/json`
-        );
-        
-        if (!response.ok) return null;
-        
-        const data = await response.json();
-        if (!data || data.length === 0) return null;
-
-        const consequences = data[0].transcript_consequences;
-        if (consequences) {
-            let match = consequences.find((c: any) => c.transcript_id === transcriptId && c.sift_score !== undefined);
-            if (!match) match = consequences.find((c: any) => c.sift_score !== undefined);
-            if (!match) match = consequences.find((c: any) => c.transcript_id === transcriptId);
-
-            if (match) {
-                 const prediction = match.sift_prediction 
-                    || match.consequence_terms?.[0] 
-                    || (match.sift_score !== undefined ? (match.sift_score <= 0.05 ? 'deleterious' : 'tolerated') : 'unknown effect');
-                 
-                 return {
-                    score: match.sift_score,
-                    prediction: prediction,
-                    source: 'Ensembl VEP (Yeast)'
-                };
-            }
-        }
-        return null;
-    } catch (e) {
-        console.error("VEP Fetch Error:", e);
-        return null;
-    }
-}
-
-// --- ORTHOLOG & ALPHAMISSENSE PROXY LOGIC ---
-
-// 1. Fetch Human VEP (AlphaMissense)
-export async function fetchHumanVariantEffect(
-    humanGeneId: string,
-    humanResidue: number,
-    humanRefAA: string,
-    mutationAA: string
-): Promise<HumanAnalysisResult | null> {
-    try {
-        // 1. Get Canonical Transcript for Human Gene
-        const lookupRes = await fetch(`${ENSEMBL_BASE}/lookup/id/${humanGeneId}?expand=1&content-type=application/json`);
-        if (!lookupRes.ok) return null;
-        const lookupData = await lookupRes.json();
-        
-        const transcript = lookupData.Transcript?.find((t: any) => t.is_canonical === 1) || lookupData.Transcript?.[0];
-        if (!transcript) return null;
-
-        // 2. Construct HGVS
-        const threeRef = toThreeLetterAA(humanRefAA);
-        const threeAlt = toThreeLetterAA(mutationAA);
-        const hgvs = `${transcript.id}:p.${threeRef}${humanResidue}${threeAlt}`;
-
-        // 3. Call Human VEP with AlphaMissense enabled
-        // We use the POST endpoint for VEP sometimes to avoid URL length issues, but GET is fine for single HGVS
-        const vepRes = await fetch(
-            `${ENSEMBL_BASE}/vep/human/hgvs/${hgvs}?content-type=application/json&AlphaMissense=1`
-        );
-        if (!vepRes.ok) return null;
-        const vepData = await vepRes.json();
-
-        if (!vepData || vepData.length === 0) return null;
-        
-        const match = vepData[0].transcript_consequences?.find((c: any) => c.transcript_id === transcript.id) 
-                   || vepData[0].transcript_consequences?.[0];
-
-        if (!match) return null;
-
-        // Extract AlphaMissense (keys can vary based on VEP plugin version)
-        const amClass = match.am_class || match.alphamissense_class;
-        const amScoreRaw = match.am_pathogenicity || match.alphamissense_score;
-        const amScore = amScoreRaw !== undefined ? parseFloat(amScoreRaw) : undefined;
-
-        return {
-            orthologSymbol: lookupData.display_name || lookupData.id,
-            humanResidue: humanResidue,
-            humanRefAA: humanRefAA,
-            isConserved: true, 
-            amClass: amClass,
-            amPathogenicity: amScore,
-            siftScore: match.sift_score,
-            siftPrediction: match.sift_prediction,
-            polyphenScore: match.polyphen_score,
-            polyphenPrediction: match.polyphen_prediction
-        };
-
-    } catch (e) {
-        console.warn("Error fetching human variant effect", e);
-        return null;
-    }
 }
 
 // 2. Map Yeast Residue to Human Residue using Alignment
@@ -229,27 +109,6 @@ export function isResidueSimilar(aa1: string, aa2: string): boolean {
     return groups.some(group => group.includes(aa1) && group.includes(aa2));
 }
 
-async function fetchDioptData(url: string): Promise<any | null> {
-    try {
-        const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-        const response = await fetch(proxyUrl);
-        if (response.ok) return await response.json();
-    } catch (e) {
-        // console.warn("CorsProxy failed", e);
-    }
-    try {
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-        const response = await fetch(proxyUrl);
-        if (response.ok) {
-            const wrapper = await response.json();
-            if (wrapper.contents) return JSON.parse(wrapper.contents);
-        }
-    } catch (e) {
-        console.warn("AllOrigins failed", e);
-    }
-    return null;
-}
-
 export async function fetchOrthologs(geneSymbol: string, ensemblId: string, entrezId?: string): Promise<Ortholog[]> {
     const candidates: Map<string, Ortholog> = new Map();
     // Key by uppercase SYMBOL for easy merging
@@ -263,9 +122,6 @@ export async function fetchOrthologs(geneSymbol: string, ensemblId: string, entr
                 ...existing,
                 // If we are merging Ensembl data into a DIOPT entry:
                 ensemblId: o.ensemblId || existing.ensemblId, 
-                // Prioritize Ensembl Identity stats if they exist (>0)
-                percentIdentity: o.percentIdentity > 0 ? o.percentIdentity : existing.percentIdentity,
-                percentSimilarity: o.percentSimilarity > 0 ? o.percentSimilarity : existing.percentSimilarity,
                 alignment: o.alignment || existing.alignment,
                 // Keep the better score/bestScore from DIOPT usually
                 score: Math.max(existing.score, o.score),
@@ -276,32 +132,23 @@ export async function fetchOrthologs(geneSymbol: string, ensemblId: string, entr
     };
 
     // 1. DIOPT (for Scores)
-    if (entrezId) {
-        const url = `https://www.flyrnai.org/tools/diopt/web/diopt_api/v9/get_orthologs_from_entrez/4932/${entrezId}/9606/none`;
-        const data = await fetchDioptData(url);
-        if (data && data.results) {
-            const resultsContainer = data.results;
-            let entries = resultsContainer[entrezId] || resultsContainer[Number(entrezId)];
-            if (!entries && Object.keys(resultsContainer).length > 0) entries = resultsContainer[Object.keys(resultsContainer)[0]];
+    const matches = dioptData.filter(d => 
+        (entrezId && String(d.yeastGeneId) === String(entrezId)) || 
+        (geneSymbol && d.yeastSymbol.toUpperCase() === geneSymbol.toUpperCase())
+    );
 
-            if (entries) {
-                Object.values(entries).forEach((o: any) => {
-                    const symbol = o.symbol || o.gene_symbol;
-                    if (!symbol) return;
-                    
-                    addOrUpdate({
-                        symbol: symbol,
-                        geneId: String(o.geneid || o.entrez_id),
-                        score: parseFloat(o.score) || 0,
-                        bestScore: o.best_score === "Yes" || o.best_score === true,
-                        percentIdentity: parseFloat(o.percent_identity) || 0,
-                        percentSimilarity: parseFloat(o.percent_similarity) || 0,
-                        source: 'DIOPT'
-                    }, symbol.toUpperCase());
-                });
-            }
-        }
-    }
+    matches.forEach(o => {
+        const symbol = o.humanSymbol;
+        if (!symbol) return;
+        
+        addOrUpdate({
+            symbol: symbol,
+            geneId: String(o.humanGeneId),
+            score: o.dioptScore || 0,
+            bestScore: o.bestScore === "Yes",
+            source: 'DIOPT'
+        }, symbol.toUpperCase());
+    });
 
     // 2. Ensembl Homology (for Identity, IDs and Alignment)
     try {
@@ -319,8 +166,6 @@ export async function fetchOrthologs(geneSymbol: string, ensemblId: string, entr
                         ensemblId: targetId,
                         score: 0,
                         bestScore: false,
-                        percentIdentity: h.target.perc_id || 0,
-                        percentSimilarity: h.target.perc_pos || 0,
                         source: 'Ensembl',
                         alignment: {
                             sourceSeq: h.source.align_seq,
@@ -339,7 +184,6 @@ export async function fetchOrthologs(geneSymbol: string, ensemblId: string, entr
     
     return finalResults.sort((a, b) => {
         if (a.bestScore !== b.bestScore) return a.bestScore ? -1 : 1;
-        if (a.score !== b.score) return b.score - a.score;
-        return b.percentIdentity - a.percentIdentity;
+        return b.score - a.score;
     }).slice(0, 15);
 }
