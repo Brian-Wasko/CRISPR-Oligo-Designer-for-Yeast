@@ -2,7 +2,7 @@
 
 CODY is a web-based bioinformatics tool designed to automate the design of single-stranded oligodeoxynucleotide (ssODN) repair templates and sgRNA cloning oligos for introducing precise point mutations in *Saccharomyces cerevisiae* (Baker's yeast) using CRISPR/Cas9.
 
-## 🚀 Features
+##  Features
 
 *   **Automated Target Discovery:** Automatically identifies valid Cas9 target sites (NGG PAMs) within a defined window around your target amino acid residue.
 *   **Intelligent Template Design:** Generates repair templates that incorporate your desired point mutation while simultaneously introducing **silent mutations** to destroy the PAM site or seed region. This prevents Cas9 from re-cutting the DNA after successful editing.
@@ -11,7 +11,7 @@ CODY is a web-based bioinformatics tool designed to automate the design of singl
 *   **Visual Alignments:** Provides a clear, color-coded visual alignment comparing the original Genomic DNA (Top) against the generated Repair Template (Bottom), highlighting the point mutation and silent PAM mutations.
 *   **Ready-to-Order Oligos:** Generates the exact Forward and Reverse oligos needed to clone the selected sgRNA into standard CRISPR plasmids.
 
-## 🔬 How It Works
+##  How It Works
 
 1.  **Input:** You provide a standard yeast gene symbol (e.g., `PHO13`), the target amino acid residue number (e.g., `112`), and the desired new amino acid in single-letter code (e.g., `A`).
 2.  **Sequence Retrieval:** CODY fetches the CDS (Coding DNA Sequence) for the canonical transcript from Ensembl.
@@ -70,7 +70,7 @@ CODY is a web-based bioinformatics tool designed to automate the design of singl
     *   Cloning oligos for the sgRNA.
     *   A visual alignment of the edit.
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/yourusername/cody-yeast-crispr/issues). Disclosure: AI was used to design this software and this readme.
 
