@@ -72,7 +72,7 @@ CODY is a web-based bioinformatics tool designed to automate the design of singl
 
 ## 🤝 Contributing
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/yourusername/cody-yeast-crispr/issues).
+Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/yourusername/cody-yeast-crispr/issues). Disclosure: AI was used to design this software and this readme.
 
 ## 📝 License
 
