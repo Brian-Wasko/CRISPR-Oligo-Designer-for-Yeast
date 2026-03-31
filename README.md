@@ -1,6 +1,6 @@
 # CODY: CRISPR Oligo Designer for Yeast 🧬
 
-CODY is a web-based bioinformatics tool designed to automate the design of single-stranded oligodeoxynucleotide (ssODN) repair templates and sgRNA cloning oligos for introducing precise point mutations in *Saccharomyces cerevisiae* (Baker's yeast) using CRISPR/Cas9.
+CODY is a web-based bioinformatics tool designed to automate the design of oligonucleotide repair templates and sgRNA cloning oligos for introducing precise point mutations in *Saccharomyces cerevisiae* (Baker's yeast) using CRISPR/Cas9.
 
 ##  Features
 
